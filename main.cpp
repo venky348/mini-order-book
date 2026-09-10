@@ -1,15 +1,15 @@
 #include <iostream>
-#include <string>
+#include <vector>
 
 
-enum class OrderType {
+enum class Side {
     BUY,
     SELL
 };
 
 struct Order {
     int id;
-    OrderType type;
+    Side side;
     double price;
     int quantity;
 };
@@ -17,20 +17,21 @@ struct Order {
 
 
 void printOrder(const Order& order) {
-    std::cout << "Order ID: " << order.id << ", Type: " 
-              << (order.type == OrderType::BUY ? "BUY" : "SELL")
+    std::cout << "Order ID: " << order.id << ", Side: " 
+              << (order.side == Side::BUY ? "BUY" : "SELL")
               << ", Price : " << order.price << ", Quantity : " << order.quantity
               << std::endl;
 }
 
 int main() {
-    Order order1 = {1, OrderType::BUY, 100.5, 10};
-    Order order2 = {2, OrderType::SELL, 101.0, 5};
-    Order order3 = {3, OrderType::BUY, 99.5, 20};
+    std::vector<Order> orders;
+    orders.push_back({1, Side::BUY, 100.5, 10});
+    orders.push_back({2, Side::SELL, 101.0, 5});
+    orders.push_back({3, Side::BUY, 99.5, 20});
 
-    printOrder(order1);
-    printOrder(order2);
-    printOrder(order3);
+    for (const auto& order : orders) {
+        printOrder(order);
+    }
 
     return 0;
 

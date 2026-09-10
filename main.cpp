@@ -1,5 +1,6 @@
 #include <iostream>
 #include <vector>
+#include <map>
 
 
 enum class Side {
@@ -27,6 +28,18 @@ void addOrder(std::vector<Order>& orders, const Order& order) {
     orders.push_back(order);
 }
 
+void learnMap() {
+    std::map<double, int> orders;
+    orders[100.5] = 10;
+    orders[100] = 20;
+    orders[101] = 5;
+    orders[99.5] = 15;
+
+    for(const auto& order : orders) {
+        std::cout << "Price: " << order.first << ", Quantity: " << order.second << std::endl;
+    }
+}
+
 int main() {
     std::vector<Order> orders;
     addOrder(orders, {1, Side::BUY, 100.5, 10});
@@ -36,6 +49,10 @@ int main() {
     for (const auto& order : orders) {
         printOrder(order);
     }
+
+    std::cout << "Learning map:" << std::endl;
+    learnMap();
+    
 
     return 0;
 

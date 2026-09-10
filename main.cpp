@@ -23,11 +23,15 @@ void printOrder(const Order& order) {
               << std::endl;
 }
 
+void addOrder(std::vector<Order>& orders, const Order& order) {
+    orders.push_back(order);
+}
+
 int main() {
     std::vector<Order> orders;
-    orders.push_back({1, Side::BUY, 100.5, 10});
-    orders.push_back({2, Side::SELL, 101.0, 5});
-    orders.push_back({3, Side::BUY, 99.5, 20});
+    addOrder(orders, {1, Side::BUY, 100.5, 10});
+    addOrder(orders, {2, Side::SELL, 101.0, 5});
+    addOrder(orders, {3, Side::BUY, 99.5, 20});
 
     for (const auto& order : orders) {
         printOrder(order);

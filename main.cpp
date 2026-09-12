@@ -18,6 +18,13 @@ struct Order {
     int quantity;
 };
 
+struct Trade {
+    int buyOrderId;
+    int sellOrderId;
+    double price;
+    int quantity;
+};
+
 void printOrder(const Order& order) {
     std::cout << "Order ID: " << order.id << ", Side: " 
               << (order.side == Side::BUY ? "BUY" : "SELL")
@@ -65,7 +72,7 @@ void printSellBook(const std::map<double, std::vector<Order>>& sellOrders) {
     }
 }
 
-void matchOrders(std::map<double, std::vector<Order>, std::greater<double>>& buyOrders, std::map<double, std::vector<Order>>& sellOrders) {
+void matchOrders(std::map<double, std::vector<Order>, std::greater<double>>& buyOrders, std::map<double, std::vector<Order>>& sellOrders, std::vector<Trade>& trades) {
     if (buyOrders.empty() || sellOrders.empty()) {
         std::cout << "Orders do not match" << std::endl;
         return;
@@ -106,6 +113,8 @@ void matchOrders(std::map<double, std::vector<Order>, std::greater<double>>& buy
 
         bestBuyOrder.quantity -= tradeQuantity;
         bestSellOrder.quantity -= tradeQuantity;
+
+        trades.push_back({bestBuyOrder.id, bestSellOrder.id, bestSellPrice, tradeQuantity});
 
 
         if (bestBuyOrder.quantity == 0){
@@ -205,6 +214,17 @@ std::optional<double> getSpread(const std::map<double, std::vector<Order>, std::
         return std::nullopt;
 }
 
+void printTrades(const std::vector<Trade>& trades) {
+    std::cout << "Trade History" << std::endl;
+
+    for(const auto& trade : trades) {
+        std::cout <<"BUY Order : " << trade.buyOrderId
+                  <<", SELL Order : " << trade.sellOrderId
+                  <<", Price : " << trade.price
+                  <<", Quantity : " << trade.quantity << std::endl;
+    }
+}
+
 int main() {
     std::vector<Order> orders;
     addOrder(orders, {1, Side::BUY, 100.5, 10});
@@ -237,9 +257,7 @@ int main() {
     std::cout << "***************** SELL ORDERS *****************" << std::endl;
     printSellBook(sellOrders);
 
-
-    //matchOrders(buyOrders, sellOrders);
-
+    std::cout << "***************** CANCEL ORDERS *****************" << std::endl;
     if (cancelOrder(buyOrders, sellOrders, 2)){
         std::cout << "Order cancelled successfully" << std::endl;
     } else {
@@ -252,7 +270,7 @@ int main() {
         std::cout << "Order not found" << std::endl;
     }
 
-    
+
     std::cout << "***************** BEST BID/ASK SPREAD *****************" << std::endl;
     std::optional<double> bestBid = getBestBid(buyOrders);
     std::optional<double> bestAsk = getBestAsk(sellOrders);
@@ -271,6 +289,15 @@ int main() {
         std::cout << "Spread : " << spread.value() << std::endl;
     else
         std::cout << "There is no spread" << std::endl;
+
+
+    std::vector<Trade> trades;
+
+    std::cout << "***************** MATCH ORDERS *****************" << std::endl;
+    matchOrders(buyOrders, sellOrders, trades);
+
+    std::cout << "***************** TRADE HISTORY *****************" << std::endl;
+    printTrades(trades);
 
 
     return 0;

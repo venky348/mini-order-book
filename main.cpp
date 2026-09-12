@@ -2,6 +2,8 @@
 #include <vector>
 #include <map>
 #include <functional>
+#include <algorithm>
+#include <optional>
 
 
 enum class Side {
@@ -15,8 +17,6 @@ struct Order {
     double price;
     int quantity;
 };
-
-
 
 void printOrder(const Order& order) {
     std::cout << "Order ID: " << order.id << ", Side: " 
@@ -65,6 +65,145 @@ void printSellBook(const std::map<double, std::vector<Order>>& sellOrders) {
     }
 }
 
+void matchOrders(std::map<double, std::vector<Order>, std::greater<double>>& buyOrders, std::map<double, std::vector<Order>>& sellOrders) {
+    if (buyOrders.empty() || sellOrders.empty()) {
+        std::cout << "Orders do not match" << std::endl;
+        return;
+    }
+
+    while (!buyOrders.empty() && !sellOrders.empty()){
+        auto buyLevel = buyOrders.begin();
+        auto sellLevel = sellOrders.begin();
+
+        double bestBuyPrice = buyLevel->first;
+        double bestSellPrice = sellLevel->first;
+
+        if (bestBuyPrice < bestSellPrice){
+            break;
+        }
+        
+        std::cout << "Orders Match" << std::endl;
+        std::cout << "Best Buy Price  : " << bestBuyPrice << std::endl;
+        std::cout << "Best Sell Price : " << bestSellPrice << std::endl;
+
+        auto& bestBuyOrders = buyLevel->second;
+        auto& bestSellOrders = sellLevel->second;
+
+        auto& bestBuyOrder = bestBuyOrders.front();
+        auto& bestSellOrder = bestSellOrders.front();
+
+        std::cout << "Best Buy Order" << std::endl;
+        printOrder(bestBuyOrder);
+
+        std::cout << "Best Sell Order" << std::endl;
+        printOrder(bestSellOrder);
+
+        int tradeQuantity = std::min(bestBuyOrder.quantity, bestSellOrder.quantity);
+
+        std::cout << "Trade executed" << std::endl;
+        std::cout << "Trade Price    : " << bestSellPrice << std::endl;
+        std::cout << "Trade Quantity : " << tradeQuantity << std::endl;
+
+        bestBuyOrder.quantity -= tradeQuantity;
+        bestSellOrder.quantity -= tradeQuantity;
+
+
+        if (bestBuyOrder.quantity == 0){
+            bestBuyOrders.erase(bestBuyOrders.begin());
+        }
+        if (bestBuyOrders.empty()){
+            buyOrders.erase(buyLevel);
+        }
+        if (bestSellOrder.quantity == 0){
+            bestSellOrders.erase(bestSellOrders.begin());
+        }
+        if (bestSellOrders.empty()){
+            sellOrders.erase(sellLevel);
+        }  
+    }
+    
+    if (buyOrders.empty() || sellOrders.empty()){
+        std::cout << "One side of the book is empty" << std::endl;
+    } else {
+        std::cout << "Best BUY price is lower than best SELL price" << std::endl;
+    }
+}
+
+bool cancelBuyOrder(std::map<double, std::vector<Order>, std::greater<double>>& buyOrders, int orderId) {
+    bool returnValue = false;
+    for(auto buyLevelIt = buyOrders.begin(); buyLevelIt != buyOrders.end(); ){
+        for(auto it = buyLevelIt->second.begin(); it != buyLevelIt->second.end();) {
+            if (it->id == orderId){
+                returnValue = true;
+                it = buyLevelIt->second.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        if (buyLevelIt->second.empty()){
+            buyLevelIt = buyOrders.erase(buyLevelIt);
+        }
+        else{
+            ++buyLevelIt;
+        }
+
+        if (returnValue)
+            return true;
+    }
+    return false;
+}
+
+bool cancelSellOrder(std::map<double, std::vector<Order>>& sellOrders, int orderId){
+    bool returnValue = false;
+    for(auto sellLevelIt = sellOrders.begin(); sellLevelIt != sellOrders.end(); ){
+        for(auto it = sellLevelIt->second.begin(); it != sellLevelIt->second.end(); ){
+            if (it->id == orderId){
+                returnValue = true;
+                it = sellLevelIt->second.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        if (sellLevelIt->second.empty()){
+            sellLevelIt = sellOrders.erase(sellLevelIt);
+        } else {
+            ++sellLevelIt;
+        }
+
+        if (returnValue)
+            return true;
+    }
+
+    return false;
+}
+
+bool cancelOrder(std::map<double, std::vector<Order>, std::greater<double>>& buyOrders, std::map<double, std::vector<Order>>& sellOrders, int orderId) {
+    return (cancelBuyOrder(buyOrders, orderId) || cancelSellOrder(sellOrders, orderId));
+}
+
+std::optional<double> getBestBid(const std::map<double, std::vector<Order>, std::greater<double>>& buyOrders){
+    if (buyOrders.empty()){
+        return std::nullopt;
+    }
+    return buyOrders.begin()->first;
+}
+
+std::optional<double> getBestAsk(const std::map<double, std::vector<Order>>& sellOrders) {
+    if (sellOrders.empty()){
+        return std::nullopt;
+    }
+    return sellOrders.begin()->first;
+}
+
+std::optional<double> getSpread(const std::map<double, std::vector<Order>, std::greater<double>>& buyOrders, const std::map<double, std::vector<Order>>& sellOrders){
+    std::optional<double> bestBid = getBestBid(buyOrders);
+    std::optional<double> bestAsk = getBestAsk(sellOrders);
+
+    if (bestBid.has_value() && bestAsk.has_value())
+        return bestAsk.value() - bestBid.value();
+    else
+        return std::nullopt;
+}
 
 int main() {
     std::vector<Order> orders;
@@ -81,18 +220,58 @@ int main() {
     addBuyOrder(buyOrders, {1, Side::BUY, 100.5, 10});
     addBuyOrder(buyOrders, {3, Side::BUY, 99.5, 20});
     addBuyOrder(buyOrders, {4, Side::BUY, 100.5, 15});
-    addBuyOrder(buyOrders, {5, Side::BUY, 101.0, 5});
+    addBuyOrder(buyOrders, {5, Side::BUY, 101.0, 10});
 
+    std::cout << "***************** BUY ORDERS *****************" << std::endl;
     printBuyBook(buyOrders);
 
     std::map<double, std::vector<Order>> sellOrders;
     
-    addSellOrder(sellOrders, {2, Side::SELL, 101.5, 10});
-    addSellOrder(sellOrders, {6, Side::SELL, 99, 10});
-    addSellOrder(sellOrders, {7, Side::SELL, 100, 30});
-    addSellOrder(sellOrders, {8, Side::SELL, 99, 2});
+    // addSellOrder(sellOrders, {2, Side::SELL, 101.5, 10});
+    // addSellOrder(sellOrders, {6, Side::SELL, 99, 10});
+    // addSellOrder(sellOrders, {7, Side::SELL, 100, 30});
+    addSellOrder(sellOrders, {8, Side::SELL, 99, 3});
+    addSellOrder(sellOrders, {9, Side::SELL, 100, 4});
+    addSellOrder(sellOrders, {10, Side::SELL, 101, 10});
 
+    std::cout << "***************** SELL ORDERS *****************" << std::endl;
     printSellBook(sellOrders);
+
+
+    //matchOrders(buyOrders, sellOrders);
+
+    if (cancelOrder(buyOrders, sellOrders, 2)){
+        std::cout << "Order cancelled successfully" << std::endl;
+    } else {
+        std::cout << "Order not found" << std::endl;
+    }
+
+    if (cancelOrder(buyOrders, sellOrders, 3)){
+        std::cout << "Order cancelled successfully" << std::endl;
+    } else {
+        std::cout << "Order not found" << std::endl;
+    }
+
+    
+    std::cout << "***************** BEST BID/ASK SPREAD *****************" << std::endl;
+    std::optional<double> bestBid = getBestBid(buyOrders);
+    std::optional<double> bestAsk = getBestAsk(sellOrders);
+    std::optional<double> spread = getSpread(buyOrders, sellOrders);
+    if (bestBid.has_value())
+        std::cout << "Best Bid : " << bestBid.value() << std::endl;
+    else
+        std::cout << "There is no Best Bid" << std::endl;
+
+    if (bestAsk.has_value())
+        std::cout << "Best Ask : " << bestAsk.value() << std::endl;
+    else
+        std::cout << "There is no Best Ask" << std::endl;
+
+    if (spread.has_value())
+        std::cout << "Spread : " << spread.value() << std::endl;
+    else
+        std::cout << "There is no spread" << std::endl;
+
 
     return 0;
 

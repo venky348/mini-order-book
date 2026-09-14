@@ -5,6 +5,12 @@
 #include <algorithm>
 #include <optional>
 
+enum OrderStatus {
+    OPEN,
+    PARTIALLY_FILLED,
+    FILLED,
+    CANCELLED
+};
 
 enum class Side {
     BUY,
@@ -16,6 +22,7 @@ struct Order {
     Side side;
     double price;
     int quantity;
+    OrderStatus status;
 };
 
 struct Trade {
@@ -29,11 +36,8 @@ void printOrder(const Order& order) {
     std::cout << "Order ID: " << order.id << ", Side: " 
               << (order.side == Side::BUY ? "BUY" : "SELL")
               << ", Price : " << order.price << ", Quantity : " << order.quantity
+              << ", Status : " << order.status
               << std::endl;
-}
-
-void addOrder(std::vector<Order>& orders, const Order& order) {
-    orders.push_back(order);
 }
 
 void addBuyOrder(std::map<double, std::vector<Order>, std::greater<double>>& buyOrders, const Order& order) {
@@ -60,6 +64,15 @@ void addSellOrder(std::map<double, std::vector<Order>>& sellOrders, const Order&
     }
 }
 
+void addOrder(std::map<int, Order>& orderRegistry, std::map<double, std::vector<Order>, std::greater<double>>& buyOrders, std::map<double, std::vector<Order>>& sellOrders, const Order& order) {
+    orderRegistry[order.id] = order;
+    if (order.side == Side::BUY) {
+        addBuyOrder(buyOrders, order);
+    } else {
+        addSellOrder(sellOrders, order);
+    }
+}
+
 void printSellBook(const std::map<double, std::vector<Order>>& sellOrders) {
     std::cout << "Sell Orders:" << std::endl;
     for(const auto& entry : sellOrders){
@@ -72,7 +85,7 @@ void printSellBook(const std::map<double, std::vector<Order>>& sellOrders) {
     }
 }
 
-void matchOrders(std::map<double, std::vector<Order>, std::greater<double>>& buyOrders, std::map<double, std::vector<Order>>& sellOrders, std::vector<Trade>& trades) {
+void matchOrders(std::map<int, Order>& orderRegistry, std::map<double, std::vector<Order>, std::greater<double>>& buyOrders, std::map<double, std::vector<Order>>& sellOrders, std::vector<Trade>& trades) {
     if (buyOrders.empty() || sellOrders.empty()) {
         std::cout << "Orders do not match" << std::endl;
         return;
@@ -113,18 +126,30 @@ void matchOrders(std::map<double, std::vector<Order>, std::greater<double>>& buy
 
         bestBuyOrder.quantity -= tradeQuantity;
         bestSellOrder.quantity -= tradeQuantity;
+        orderRegistry[bestBuyOrder.id].quantity -= tradeQuantity;
+        orderRegistry[bestSellOrder.id].quantity -= tradeQuantity;
 
         trades.push_back({bestBuyOrder.id, bestSellOrder.id, bestSellPrice, tradeQuantity});
 
 
         if (bestBuyOrder.quantity == 0){
+            bestBuyOrder.status = OrderStatus::FILLED;
+            orderRegistry[bestBuyOrder.id].status = OrderStatus::FILLED;
             bestBuyOrders.erase(bestBuyOrders.begin());
+        } else {
+            orderRegistry[bestBuyOrder.id].status = OrderStatus::PARTIALLY_FILLED;
+            bestBuyOrder.status = OrderStatus::PARTIALLY_FILLED;
         }
         if (bestBuyOrders.empty()){
             buyOrders.erase(buyLevel);
         }
         if (bestSellOrder.quantity == 0){
+            bestSellOrder.status = OrderStatus::FILLED;
+            orderRegistry[bestSellOrder.id].status = OrderStatus::FILLED;
             bestSellOrders.erase(bestSellOrders.begin());
+        } else {
+            orderRegistry[bestSellOrder.id].status = OrderStatus::PARTIALLY_FILLED;
+            bestSellOrder.status = OrderStatus::PARTIALLY_FILLED;
         }
         if (bestSellOrders.empty()){
             sellOrders.erase(sellLevel);
@@ -138,11 +163,13 @@ void matchOrders(std::map<double, std::vector<Order>, std::greater<double>>& buy
     }
 }
 
-bool cancelBuyOrder(std::map<double, std::vector<Order>, std::greater<double>>& buyOrders, int orderId) {
+bool cancelBuyOrder(std::map<int, Order>& orderRegistry, std::map<double, std::vector<Order>, std::greater<double>>& buyOrders, int orderId) {
     bool returnValue = false;
     for(auto buyLevelIt = buyOrders.begin(); buyLevelIt != buyOrders.end(); ){
         for(auto it = buyLevelIt->second.begin(); it != buyLevelIt->second.end();) {
             if (it->id == orderId){
+                orderRegistry[orderId].status = OrderStatus::CANCELLED;
+                it->status = OrderStatus::CANCELLED;
                 returnValue = true;
                 it = buyLevelIt->second.erase(it);
             } else {
@@ -162,11 +189,13 @@ bool cancelBuyOrder(std::map<double, std::vector<Order>, std::greater<double>>& 
     return false;
 }
 
-bool cancelSellOrder(std::map<double, std::vector<Order>>& sellOrders, int orderId){
+bool cancelSellOrder(std::map<int, Order>& orderRegistry, std::map<double, std::vector<Order>>& sellOrders, int orderId){
     bool returnValue = false;
     for(auto sellLevelIt = sellOrders.begin(); sellLevelIt != sellOrders.end(); ){
         for(auto it = sellLevelIt->second.begin(); it != sellLevelIt->second.end(); ){
             if (it->id == orderId){
+                orderRegistry[orderId].status = OrderStatus::CANCELLED;
+                it->status = OrderStatus::CANCELLED;
                 returnValue = true;
                 it = sellLevelIt->second.erase(it);
             } else {
@@ -186,8 +215,8 @@ bool cancelSellOrder(std::map<double, std::vector<Order>>& sellOrders, int order
     return false;
 }
 
-bool cancelOrder(std::map<double, std::vector<Order>, std::greater<double>>& buyOrders, std::map<double, std::vector<Order>>& sellOrders, int orderId) {
-    return (cancelBuyOrder(buyOrders, orderId) || cancelSellOrder(sellOrders, orderId));
+bool cancelOrder(std::map<int, Order>& orderRegistry, std::map<double, std::vector<Order>, std::greater<double>>& buyOrders, std::map<double, std::vector<Order>>& sellOrders, int orderId) {
+    return (cancelBuyOrder(orderRegistry, buyOrders, orderId) || cancelSellOrder(orderRegistry,sellOrders, orderId));
 }
 
 std::optional<double> getBestBid(const std::map<double, std::vector<Order>, std::greater<double>>& buyOrders){
@@ -226,45 +255,62 @@ void printTrades(const std::vector<Trade>& trades) {
 }
 
 int main() {
-    std::vector<Order> orders;
-    addOrder(orders, {1, Side::BUY, 100.5, 10});
-    addOrder(orders, {2, Side::SELL, 101.0, 5});
-    addOrder(orders, {3, Side::BUY, 99.5, 20});
+    // std::vector<Order> orders;
+    // addOrder(orders, {1, Side::BUY, 100.5, 10});
+    // addOrder(orders, {2, Side::SELL, 101.0, 5});
+    // addOrder(orders, {3, Side::BUY, 99.5, 20});
 
     // for (const auto& order : orders) {
     //     printOrder(order);
     // }
 
+    std::map<int, Order> orderRegistry;
     std::map<double, std::vector<Order>, std::greater<double>> buyOrders;
+    std::map<double, std::vector<Order>> sellOrders;
 
-    addBuyOrder(buyOrders, {1, Side::BUY, 100.5, 10});
-    addBuyOrder(buyOrders, {3, Side::BUY, 99.5, 20});
-    addBuyOrder(buyOrders, {4, Side::BUY, 100.5, 15});
-    addBuyOrder(buyOrders, {5, Side::BUY, 101.0, 10});
+    addOrder(orderRegistry, buyOrders, sellOrders, {1, Side::BUY, 100.5, 10, OrderStatus::OPEN});
+    addOrder(orderRegistry, buyOrders, sellOrders, {3, Side::BUY, 99.5, 20, OrderStatus::OPEN});
+    addOrder(orderRegistry, buyOrders, sellOrders, {4, Side::BUY, 100.5, 15, OrderStatus::OPEN});
+    addOrder(orderRegistry, buyOrders, sellOrders, {5, Side::BUY, 101.0, 10, OrderStatus::OPEN});
+
+    addOrder(orderRegistry, buyOrders, sellOrders, {2, Side::SELL, 101.5, 10, OrderStatus::OPEN});
+    addOrder(orderRegistry, buyOrders, sellOrders, {6, Side::SELL, 99, 10, OrderStatus::OPEN});
+    addOrder(orderRegistry, buyOrders, sellOrders, {7, Side::SELL, 100, 30, OrderStatus::OPEN});
+    addOrder(orderRegistry, buyOrders, sellOrders, {8, Side::SELL, 99, 3, OrderStatus::OPEN});
+    addOrder(orderRegistry, buyOrders, sellOrders, {9, Side::SELL, 100, 4, OrderStatus::OPEN});
+    addOrder(orderRegistry, buyOrders, sellOrders, {10, Side::SELL, 101, 10, OrderStatus::OPEN});
+
+    
+
+    // addBuyOrder(buyOrders, {1, Side::BUY, 100.5, 10, OrderStatus::OPEN});
+    // addBuyOrder(buyOrders, {3, Side::BUY, 99.5, 20, OrderStatus::OPEN});
+    // addBuyOrder(buyOrders, {4, Side::BUY, 100.5, 15, OrderStatus::OPEN});
+    // addBuyOrder(buyOrders, {5, Side::BUY, 101.0, 10, OrderStatus::OPEN});
 
     std::cout << "***************** BUY ORDERS *****************" << std::endl;
     printBuyBook(buyOrders);
 
-    std::map<double, std::vector<Order>> sellOrders;
     
-    // addSellOrder(sellOrders, {2, Side::SELL, 101.5, 10});
-    // addSellOrder(sellOrders, {6, Side::SELL, 99, 10});
-    // addSellOrder(sellOrders, {7, Side::SELL, 100, 30});
-    addSellOrder(sellOrders, {8, Side::SELL, 99, 3});
-    addSellOrder(sellOrders, {9, Side::SELL, 100, 4});
-    addSellOrder(sellOrders, {10, Side::SELL, 101, 10});
+    
+    // addSellOrder(sellOrders, {2, Side::SELL, 101.5, 10, OrderStatus::OPEN});
+    // addSellOrder(sellOrders, {6, Side::SELL, 99, 10, OrderStatus::OPEN});
+    // addSellOrder(sellOrders, {7, Side::SELL, 100, 30, OrderStatus::OPEN});
+    // addSellOrder(sellOrders, {8, Side::SELL, 99, 3, OrderStatus::OPEN});
+    // addSellOrder(sellOrders, {9, Side::SELL, 100, 4, OrderStatus::OPEN});
+    // addSellOrder(sellOrders, {10, Side::SELL, 101, 10, OrderStatus::OPEN});
+
 
     std::cout << "***************** SELL ORDERS *****************" << std::endl;
     printSellBook(sellOrders);
 
     std::cout << "***************** CANCEL ORDERS *****************" << std::endl;
-    if (cancelOrder(buyOrders, sellOrders, 2)){
+    if (cancelOrder(orderRegistry, buyOrders, sellOrders, 2)){
         std::cout << "Order cancelled successfully" << std::endl;
     } else {
         std::cout << "Order not found" << std::endl;
     }
 
-    if (cancelOrder(buyOrders, sellOrders, 3)){
+    if (cancelOrder(orderRegistry, buyOrders, sellOrders, 3)){
         std::cout << "Order cancelled successfully" << std::endl;
     } else {
         std::cout << "Order not found" << std::endl;
@@ -294,7 +340,7 @@ int main() {
     std::vector<Trade> trades;
 
     std::cout << "***************** MATCH ORDERS *****************" << std::endl;
-    matchOrders(buyOrders, sellOrders, trades);
+    matchOrders(orderRegistry, buyOrders, sellOrders, trades);
 
     std::cout << "***************** TRADE HISTORY *****************" << std::endl;
     printTrades(trades);

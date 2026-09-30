@@ -68,4 +68,6 @@ vcpkg_installed/
 Testing/
 .cache/
 
+.DS_Store
+
 .vscode

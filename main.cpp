@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <optional>
 
+long long nextTimeStamp = 1;
+
 enum OrderStatus {
     OPEN,
     PARTIALLY_FILLED,
@@ -23,6 +25,7 @@ struct Order {
     double price;
     int quantity;
     OrderStatus status;
+    long long timeStamp;
 };
 
 struct Trade {
@@ -32,11 +35,26 @@ struct Trade {
     int quantity;
 };
 
+std::string getOrderStatusName(OrderStatus status) {
+    switch(status) {
+        case OrderStatus::OPEN:
+            return "OPEN";
+        case OrderStatus::PARTIALLY_FILLED:
+            return "PARTIALLY_FILLED";
+        case OrderStatus::FILLED:
+            return "FILLED";
+        case OrderStatus::CANCELLED:
+            return "CANCELED";
+        default:
+            return "UNKNOWN";
+    }
+}
+
 void printOrder(const Order& order) {
     std::cout << "Order ID: " << order.id << ", Side: " 
               << (order.side == Side::BUY ? "BUY" : "SELL")
               << ", Price : " << order.price << ", Quantity : " << order.quantity
-              << ", Status : " << order.status
+              << ", Status : " << getOrderStatusName(order.status)
               << std::endl;
 }
 
@@ -64,13 +82,19 @@ void addSellOrder(std::map<double, std::vector<Order>>& sellOrders, const Order&
     }
 }
 
-void addOrder(std::map<int, Order>& orderRegistry, std::map<double, std::vector<Order>, std::greater<double>>& buyOrders, std::map<double, std::vector<Order>>& sellOrders, const Order& order) {
+bool addOrder(std::map<int, Order>& orderRegistry, std::map<double, std::vector<Order>, std::greater<double>>& buyOrders, std::map<double, std::vector<Order>>& sellOrders, const Order& order) {
+    if (orderRegistry.find(order.id) != orderRegistry.end()){
+        return false;
+    }
+
     orderRegistry[order.id] = order;
     if (order.side == Side::BUY) {
         addBuyOrder(buyOrders, order);
     } else {
         addSellOrder(sellOrders, order);
     }
+
+    return true;
 }
 
 void printSellBook(const std::map<double, std::vector<Order>>& sellOrders) {
@@ -216,6 +240,13 @@ bool cancelSellOrder(std::map<int, Order>& orderRegistry, std::map<double, std::
 }
 
 bool cancelOrder(std::map<int, Order>& orderRegistry, std::map<double, std::vector<Order>, std::greater<double>>& buyOrders, std::map<double, std::vector<Order>>& sellOrders, int orderId) {
+    auto it = orderRegistry.find(orderId);
+    if (it == orderRegistry.end()){
+        return false;
+    }
+    if ((it->second.status == OrderStatus::CANCELLED) || (it->second.status == OrderStatus::FILLED)){
+        return false;
+    }
     return (cancelBuyOrder(orderRegistry, buyOrders, orderId) || cancelSellOrder(orderRegistry,sellOrders, orderId));
 }
 
@@ -252,6 +283,32 @@ void printTrades(const std::vector<Trade>& trades) {
                   <<", Price : " << trade.price
                   <<", Quantity : " << trade.quantity << std::endl;
     }
+}
+
+void printOrderRegistry(const std::map<int, Order>& OrderRegistry){
+    for(const auto& entry : OrderRegistry) {
+        printOrder(entry.second);
+    }
+}
+
+std::optional<OrderStatus> getOrderStatus(const std::map<int, Order>& orderRegsitry, int orderId) {
+    auto it = orderRegsitry.find(orderId);
+
+    if (it == orderRegsitry.end()) {
+        return std::nullopt;
+    }
+
+    return it->second.status;
+}
+
+std::optional<Order> getOrder(const std::map<int, Order>& orderRegistry, int orderId) {
+    auto it = orderRegistry.find(orderId);
+
+    if (it == orderRegistry.end()){
+        return std::nullopt;
+    }
+
+    return it->second;
 }
 
 int main() {
@@ -304,16 +361,21 @@ int main() {
     printSellBook(sellOrders);
 
     std::cout << "***************** CANCEL ORDERS *****************" << std::endl;
-    if (cancelOrder(orderRegistry, buyOrders, sellOrders, 2)){
+    if (cancelOrder(orderRegistry, buyOrders, sellOrders, 11)){
         std::cout << "Order cancelled successfully" << std::endl;
     } else {
-        std::cout << "Order not found" << std::endl;
+        std::cout << "Order is filled, already cancelled or not found" << std::endl;
     }
 
     if (cancelOrder(orderRegistry, buyOrders, sellOrders, 3)){
         std::cout << "Order cancelled successfully" << std::endl;
     } else {
-        std::cout << "Order not found" << std::endl;
+        std::cout << "Order is filled, already, cancelled or not found" << std::endl;
+    }
+
+    auto tempOrder = getOrder(orderRegistry, 3);
+    if (tempOrder){
+        printOrder(*tempOrder);
     }
 
 
@@ -344,6 +406,44 @@ int main() {
 
     std::cout << "***************** TRADE HISTORY *****************" << std::endl;
     printTrades(trades);
+
+    std::cout << "***************** ORDER REGISTRY *****************" << std::endl;
+    printOrderRegistry(orderRegistry);
+
+    std::cout << "***************** ORDER STATUS *****************" << std::endl;
+    auto status = getOrderStatus(orderRegistry, 7);
+
+    if (status.has_value()) {
+        std::cout << "Order 7 Status : " << getOrderStatusName(status.value()) << std::endl;
+    } else {
+        std::cout << "Order not found" << std::endl;
+    }
+
+    std::cout << "***************** GET ORDER *****************" << std::endl;
+    auto order1 = getOrder(orderRegistry, 7);
+
+    if (order1.has_value()){
+        printOrder(order1.value());
+    } else {
+        std::cout << "Order not found" << std::endl;
+    }
+
+    auto order2 = getOrder(orderRegistry, 100);
+
+    if (order2.has_value()){
+        printOrder(order2.value());
+    } else {
+        std::cout << "Order not found" << std::endl;
+    }
+
+    std::cout << "***************** DUPLICATE ORDER *****************" << std::endl;
+    bool added = addOrder(orderRegistry, buyOrders, sellOrders, {1, Side::BUY, 102.0, 5, OrderStatus::OPEN});
+    
+    if (added) {
+        std::cout << "Order addded successfully" << std::endl;
+    } else {
+        std::cout << "Order ID already exists" << std::endl;
+    }
 
 
     return 0;
